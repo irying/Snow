@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/swoole.iml" filepath="$PROJECT_DIR$/.idea/swoole.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/kyrie-c.iml" filepath="$PROJECT_DIR$/.idea/kyrie-c.iml" />
     </modules>
   </component>
 </project>
