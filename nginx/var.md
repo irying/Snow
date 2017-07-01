@@ -127,3 +127,73 @@ location /test_unescape_name {
 
 
 
+#### 四.也有些内建变量的值是可以改的
+
+ 也有一些内建变量是支持改写的，其中一个例子是 [$args](http://wiki.nginx.org/HttpCoreModule#.24args). 这个变量在读取时返回当前请求的 URL 参数串（即请求 URL 中问号后面的部分，如果有的话 ），而在赋值时可以直接修改参数串。我们来看一个例子：
+
+```nginx
+    location /test {
+        set $orig_args $args;
+        set $args "a=3&b=4";
+ 
+        echo "original args: $orig_args";
+        echo "args: $args";
+    }
+```
+
+这里我们把原始的 URL 参数串先保存在 `$orig_args` 变量中，然后通过改写 [$args](http://wiki.nginx.org/HttpCoreModule#.24args) 变量来修改当前的 URL 参数串，最后我们用 [echo](http://wiki.nginx.org/HttpEchoModule#echo) 指令分别输出 `$orig_args` 和 [$args](http://wiki.nginx.org/HttpCoreModule#.24args) 变量的值。接下来我们这样来测试这个 `/test`接口：
+
+```nginx
+    $ curl 'http://localhost:8080/test'
+    original args: 
+    args: a=3&b=4
+ 
+    $ curl 'http://localhost:8080/test?a=0&b=1&c=2'
+    original args: a=0&b=1&c=2
+    args: a=3&b=4
+```
+
+
+
+#### 五.map缓存,惰性求值
+
+ 在设置了“取处理程序”的情况下，**<u>Nginx 变量也可以选择将其值容器用作缓存，这样在多次读取变量的时候，就只需要调用“取处理程序”计算一次。</u>**我们下面就来看一个这样的例子：
+
+```nginx
+map $args $foo {
+        default     0;
+        debug       1;
+    }
+ #应当注意到 map 指令是在 server 配置块之外，也就是在最外围的 http 配置块中定义的
+    server {
+        listen 8080;
+ 
+        location /test {
+            set $orig_foo $foo;
+            set $args debug;
+ 
+            echo "orginal foo: $orig_foo";
+            echo "foo: $foo";
+        }
+    }
+```
+
+result：
+
+```nginx
+ $ curl 'http://localhost:8080/test?debug'
+    original foo: 1
+    foo: 1
+   
+  $ curl 'http://localhost:8080/test'
+   original foo: 0
+   foo: 0
+```
+
+​    很多 Nginx 新手都会担心如此“全局”范围的 [map](http://wiki.nginx.org/HttpMapModule#map) 设置会让访问所有虚拟主机的所有 `location` 接口的请求都执行一遍变量值的映射计算，然而事实并非如此。前面我们已经了解到 [map](http://wiki.nginx.org/HttpMapModule#map) 配置指令的工作原理是为用户变量注册 “取处理程序”，并且实际的映射计算是在“取处理程序”中完成的，**而“取处理程序”只有在该用户变量被实际读取时才会执行（当然，因为缓存的存在，只在请求生命期中的第一次读取中才被执行），所以对于那些根本没有用到相关变量的请求来说，就根本不会执行任何的无用计算。**
+
+​    这种只在实际使用对象时才计算对象值的技术，在计算领域被称为“**惰性求值**”（lazy evaluation）。提供“惰性求值” 语义的编程语言并不多见，最经典的例子便是 Haskell. 与之相对的便是“主动求值” （eager evaluation）。我们有幸在 Nginx 中也看到了“惰性求值”的例子，但“主动求值”语义其实在 Nginx 里面更为常见，例如下面这行再普通不过的 [set](http://wiki.nginx.org/HttpRewriteModule#set) 语句：
+
+```
+    set $b "$a,$a";
+```
