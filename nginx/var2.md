@@ -75,3 +75,90 @@ location /sub {
 “为什么‘子请求’ `/sub` 的输出没有出现在最终的输出里呢？”答案很简单，那就是因为 `auth_request` 指令会自动忽略“子请求”的响应体，而只检查“子请求”的响应状态码。当状态码是 `2XX` 的时候，<u>**`auth_request` 指令会忽略“子请求”而让 Nginx 继续处理当前的请求，否则它就会立即中断当前（主）请求的执行，返回相应的出错页。**</u>在我们的例子中，`/sub` “子请求”只是使用 [echo](http://wiki.nginx.org/HttpEchoModule#echo) 指令作了一些输出，所以隐式地返回了指示正常的 `200` 状态码。
 
 ​    如 [ngx_auth_request](http://mdounin.ru/hg/ngx_http_auth_request_module/) 模块这样父子请求共享一套 Nginx 变量的行为，虽然可以让父子请求之间的数据双向传递变得极为容易，但是对于足够复杂的配置，却也经常导致不少难于调试的诡异 bug. 因为用户时常不知道“父请求”的某个 Nginx 变量的值，其实已经在它的某个“子请求”中被意外修改了。诸如此类的因共享而导致的不好的“副作用”，让包括 [ngx_echo](http://wiki.nginx.org/HttpEchoModule)，[ngx_lua](http://wiki.nginx.org/HttpLuaModule)，以及 [ngx_srcache](http://wiki.nginx.org/HttpSRCacheModule) 在内的许多第三方模块都选择了**禁用父子请求间的变量共享**。
+
+
+
+#### 第3种情况：$request_method
+
+**并非所有的内建变量都作用于当前请求。少数内建变量只作用于“主请求”**，比如由标准模块 [ngx_http_core](http://nginx.org/en/docs/http/ngx_http_core_module.html) 提供的内建变量 [$request_method](http://wiki.nginx.org/HttpCoreModule#.24request_method)
+
+   变量 [$request_method](http://wiki.nginx.org/HttpCoreModule#.24request_method) 在读取时，总是会得到“主请求”的请求方法，比如 `GET`、`POST` 之类。我们来测试一下：
+
+```nginx
+    location /main {
+        echo "main method: $request_method";
+        echo_location /sub;
+    }
+ 
+    location /sub {
+        echo "sub method: $request_method";
+    }
+```
+
+在这个例子里，`/main` 和 `/sub` 接口都会分别输出 [$request_method](http://wiki.nginx.org/HttpCoreModule#.24request_method) 的值。同时，我们在 `/main` 接口里利用 [echo_location](http://wiki.nginx.org/HttpEchoModule#echo_location) 指令发起一个到 `/sub` 接口的 `GET` “子请求”。我们现在利用 `curl` 命令行工具来发起一个到`/main` 接口的 `POST` 请求：
+
+```
+    $ curl --data hello 'http://localhost:8080/main'
+    main method: POST
+    sub method: POST
+```
+
+这里我们利用 `curl` 程序的 `--data` 选项，指定 `hello` 作为我们的请求体数据，同时 `--data` 选项会自动让发送的请求使用 `POST` 请求方法。测试结果证明了我们先前的预言，[$request_method](http://wiki.nginx.org/HttpCoreModule#.24request_method) 变量即使在 `GET` “子请求”`/sub` 中使用，得到的值依然是“主请求” `/main` 的请求方法，`POST`.
+
+
+
+#### **但，一种方法可以破之**：用$echo_request_method
+
+​    由此可见，我们并不能通过标准的 [$request_method](http://wiki.nginx.org/HttpCoreModule#.24request_method) 变量取得“子请求”的请求方法。为了达到我们最初的目的，我们需要求助于第三方模块 [ngx_echo](http://wiki.nginx.org/HttpEchoModule) 提供的内建变量 [$echo_request_method](http://wiki.nginx.org/HttpEchoModule#.24echo_request_method)：
+
+```nginx
+    location /main {
+        echo "main method: $echo_request_method";
+        echo_location /sub;
+    }
+ 
+    location /sub {
+        echo "sub method: $echo_request_method";
+    }
+```
+
+此时的输出终于是我们想要的了：
+
+```
+    $ curl --data hello 'http://localhost:8080/main'
+    main method: POST
+    sub method: GET
+```
+
+
+
+回顾下map，缓存取值
+
+```nginx
+ map $uri $tag {
+        default     0;
+        /main       1;
+        /sub        2;
+    }
+ 
+    server {
+        listen 8080;
+ 
+        location /main {
+            auth_request /sub;
+            echo "main tag: $tag";
+        }
+ 
+        location /sub {
+            echo "sub tag: $tag";
+        }
+    }
+```
+
+result： 
+
+```
+$ curl 'http://localhost:8080/main'    main tag: 2
+```
+
+因为我们的 `$tag` 变量在“子请求” `/sub` **<u>中首先被读取</u>**，于是在那里计算出了值 `2`（因为 [$uri](http://wiki.nginx.org/HttpCoreModule#.24uri) 在那里取值 `/sub`，而根据 [map](http://wiki.nginx.org/HttpMapModule#map) 映射规则，`$tag` 应当取值 `2`），从此就被 `$tag` 的值容器给缓存住了。而`auth_request` 发起的“子请求”又是与“父请求”**共享一套变量**的，于是当 Nginx 的执行流回到“父请求”输出 `$tag` 变量的值时，Nginx 就直接返回缓存住的结果 `2` 了。这样的结果确实太意外了。
