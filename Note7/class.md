@@ -214,7 +214,11 @@ if (value) {    //  成员变量有初始化数据
 
 在初始化过程中，程序会先分配内存，如果这个成员变量有初始化的数据，则将数据直接赋值给该属性， 否则初始化ZVAL，并将其类型设置为IS_NULL。在初始化过程完成后，程序通过调用 **zend_declare_property_ex** 函数**将此成员变量添加到指定的类结构中。**
 
-以上为成员变量的初始化和注册成员变量的过程，常规的成员变量最后都会注册到类的 **default_properties** 字段。 在我们平时的工作中，可能会用不到上面所说的这些过程，但是我们可能会使用get_class_vars()函数来查看类的成员变量。 此函数返回由类的默认属性组成的关联数组，这个数组的元素以 varname => value 的形式存在。其实现核心代码如下：
+以上为成员变量的初始化和注册成员变量的过程，常规的成员变量最后都会注册到类的 **default_properties** 字段。 在我们平时的工作中，可能会用不到上面所说的这些过程，但是我们可能会使用get_class_vars()函数来查看类的成员变量。 此函数返回由类的默认属性组成的关联数组，这个数组的元素以 varname => value 的形式存在。
+
+
+
+**get_class_vars()函数**核心代码如下：
 
 ```C
 if (zend_lookup_class(class_name, class_name_len, &pce TSRMLS_CC) == FAILURE) {
@@ -226,3 +230,29 @@ if (zend_lookup_class(class_name, class_name_len, &pce TSRMLS_CC) == FAILURE) {
     add_class_vars(*pce, CE_STATIC_MEMBERS(*pce), return_value TSRMLS_CC);
 }
 ```
+zend_lookup_class函数查找名为class_name的类，并将赋值给pce变量。 这个查找的过程最核心是一个HashTable的查找函数zend_hash_quick_find，它会查找EG(class_table)。 判断类是否存在，如果存在则直接返回。如果不存在，则需要判断是否可以自动加载，如果可以自动加载，则会加载类后再返回。 如果不能找到类，则返回FALSE。**如果找到了类，则初始化返回的数组，更新类的静态成员变量，添加类的成员变量到返回的数组**。 
+
+
+
+这里针对类的静态成员变量有一个更新的过程
+
+#### 类的静态成员变量是所有实例共用的，它归属于这个类，因此它也叫做类变量。 在PHP的类结构中，类本身的静态变量存放在类结构的 **default_static_members** 字段中
+
+```php
+class Tipi {
+    public static $var = 10;
+}
+ 
+Tipi::$var;
+```
+
+我们要调用一个类的静态变量，当然要先找到这个类，然后再获取这个类的变量。 从PHP源码来看，这是由于在编译时其调用了zend_do_fetch_static_member函数， 而在此函数中又调用了zend_do_fetch_class函数， 从而会生成ZEND_FETCH_CLASS中间代码。它所对应的执行函数为 **ZEND_FETCH_CLASS_SPEC_CONST_HANDLER**。 此函数会调用zend_fetch_class函数（Zend/zend_execute_API.c）。 而zend_fetch_class函数最终也会调用 **zend_lookup_class_ex** 函数查找类，这与前面的查找方式一样
+
+
+
+找到了类，接着应该就是查找类的静态成员变量，其最终调用的函数为：zend_std_get_static_property。 这里由于第二个参数的类型为 ZEND_FETCH_STATIC_MEMBER。这个函数最后是从 **static_members** 字段中查找对应的值返回。 而在查找前会和前面一样，**执行zend_update_class_constants函数，从而更新此类的所有静态成员变量**。
+
+
+
+![](http://www.php-internals.com/images/book/chapt05/05-02-01-class-static-vars.jpg)
+
