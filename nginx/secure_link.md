@@ -12,31 +12,7 @@
 配置
 
 ```c
-
-1
-2
-3
-4
-5
-6
-7
-8
-9
-10
-11
-12
-13
-14
-15
-16
-17
-18
-19
-20
-21
-22
 server {
- 
     listen       80;
     server_name  s1.down.ttlsa.com;
     access_log  /data/logs/nginx/s1.down.ttlsa.com.access.log  main;
@@ -88,7 +64,7 @@ $secret = 'ttlsa.com'; # 密钥
 http://s1.down.ttlsa.com/web/nginx-1.4.2.tar.gz?st=LSVzmZllg68AJaBmeK3E8Q&e=1378881984
 页面不要刷新，等到5分钟后在下载一次，你会发现点击下载会跳转到403页面。
 
-### secure** link 防盗链原理**
+### secure link 防盗链原理
 
 - 用户访问down.php
 
