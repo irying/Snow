@@ -9,15 +9,20 @@
 函数功能： epoll事件注册函数
 参数**epfd为epoll的句柄，即epoll_create返回值**
 参数op表示动作，用3个宏来表示：  
+
 EPOLL_CTL_ADD(注册新的fd到epfd)， 
 EPOLL_CTL_MOD(修改已经注册的fd的监听事件)，
 EPOLL_CTL_DEL(从epfd删除一个fd)；
 其中参数fd为需要监听的标示符；
 参数event告诉内核需要监听的事件，event的结构如下：
-**struct epoll_event {**
-​    **__uint32_t events; //Epoll events**
-​      **epoll_data_t data; //User data variable**
-**};**
+
+```
+struct epoll_event {
+    _uint32t events; //Epoll events
+    epoll_data_t data; //User data variable
+};
+```
+
 **events是宏的集合，主要使用EPOLLIN**(表示对应的文件描述符可以读，即读事件发生)
 
 
