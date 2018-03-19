@@ -121,3 +121,48 @@ PHP变量的回收主要有两种：**主动销毁、自动销毁**。主动销�
 ## 3.3 Zend引擎执行过程
 
 Zend引擎主要包含两个核心部分：编译、执行：
+
+### 编译
+
+PHP编译过程包括**词法分析、语法分析，使用re2c、bison完成**，旧的PHP版本直接生成了opcode，PHP7新增了抽象语法树（AST），在语法分析阶段生成AST，然后再生成opcode数组。
+
+![](https://github.com/pangudashu/php7-internal/raw/master/img/zend_compile_process.png)
+
+
+
+### 执行
+
+执行流程中有几个重要的数据结构，先看下这几个结构。
+
+
+
+
+
+
+
+-----------
+
+
+
+1.解析器是解释器或者编译器的一部分
+
+
+2.解释器一般是跟编译器做对比的，最直观的区别是代码经过解释器解释之后，直接拿到结果了，经过编译器编译之后会是其他语言的，机器指令，汇编啊等，也有可能是同个语言，就是还没拿到结果。
+
+3.狭义的解析器输入的单词的流，经过语法分析，输出是语法树或者抽象的语法树
+4.解析器前面一般还有个扫描器，是做词法分析的，输入的是文本，将文本切割成流
+
+
+5.当执行引擎执行生成的中间代码时，**会在Zend虚拟机的栈中添加一个新的执行中间数据结构（zend_execute_data）， 它包括当前执行过程的活动符号列表的快照、一些局部变量等。**
+
+6.**PHP主脚本会生成一个zend_op_array**，**每个function也会编译为独立的zend_op_array**，所以从二进制程序的角度看zend_op_array包含着当前作用域下的所有**堆栈信息**，函数调用实际就是不同zend_op_array间的切换。
+
+
+
+7.执行期的全局变量就是**executor_globals,其类型为zend_executor_globals, zend_executor_globals的定义在{PHPSRC}/Zend/zend_globals.h，结构比较庞大，这里包含了整个执行期需要用到的各种变量，无论是哪个op_array在执行，都共用这一个全局变量，在执行过程中，此结构中的一些成员可能会改变，**比如当前执行的op_array字段active_op_array，动态符号表字段active_symbol_table可能会根据不同的op_array而改变，This指针会根据在不同的对象环境而改变。 另外还定义了一个EG宏来取此变量中的字段值，此宏是针对线程安全和非线程安全模式的一个封装。
+
+**8.所以我们每次切换到新的op_array的时候，都会为新的op_array建立一个execute_data变量，此变量的类型为zend_execute_data的**。
+
+9.zend_execute_data里面的东西：
+
+opline: 当前正在执行的op。 prev_execute_data: op_array环境切换的时候，这个字段用来保存切换前的op_array,此字段非常重要，**他能将每个op_array的execute_data按照调用的先后顺序连接成一个单链表**，每当一个op_array执行结束要还原到调用前op_array的时候，**就通过当前的execute_data中的prev_execute_data字段来得到调用前的执行器数据。** 在executor_globals中的字段current_execute_data就是指向当前正在执行的op_array的execute_data。
