@@ -1,6 +1,6 @@
 
 
-
+### master节点组件
 
 ### Node
 
@@ -222,3 +222,78 @@ targetPort是Pod监听的端口
 
 
 ### ConfigMap
+
+
+
+
+
+
+
+## k8s和mesos的区别
+
+mesos
+
+开源的分布式资源管理框架，它被称为分布式系统的内核，**可以将不同的物理资源整合在一个逻辑资源层面上。当拥有很多的物理资源并想构建一个巨大的资源池的时候，mesos是最适用的。**可以看出mesos解决问题的核心是围绕物理资源层，上面跑什么，怎么跑它不关注，它缺少一个资源调度的东西。
+
+
+
+k8s
+
+自动化容器操作的平台，部署，调度和集群伸缩，它都有，有人研究在 mesos 系统上发布 k8s 作为 mesos 的调度器解决方案。
+
+
+
+上面是从功能定位上的区别
+
+业务类型也有区别
+
+k8s支多种容器业务类型，一般有两种业务类，服务类跟工作类。服务类通常一直在运行，不能挂的，像web服务器，后台运行的daemon。工作类像批处理程序，定时任务这些。k8s提供job，可以设置并行参数。如果有计划任务，可以声明这个kind为cronJob。
+
+
+
+### 工作流程到工作原理
+
+https://www.yangcs.net/posts/what-happens-when-k8s/
+
+首先通过 Deployment 部署应用程序，然后再使用 Service 为应用程序提供服务发现、负载均衡和外部路由的功能。
+
+
+
+#### 内部服务发现—自发现
+
+Service 提供了两种服务发现的方式，第一种是环境变量，第二种是 DNS。先说第一种，上面我们创建了`nginx-service`这个 Service，接着如果我们再创建另外一个 Pod，那么在这个 Pod 中，可以通过环境变量知道`nginx-service`的地址。
+
+
+
+有个kube-dns组件，程监视 Kubernetes master 中的 **Service 和 Endpoint 的变化，并维护内存查找结构来服务DNS请求。**比如说在default的工作空间下新建了个nginx的service，集群内任何pod主要访问这个空间加上service名就能访问到。
+
+
+
+APIserver收到Rest API请求后会进行一系列的验证操作，包括用户认证、授权和资源配额控制。
+
+验证通过后，验证通过后，APIserver调用etcd的存储接口创建一个deployment controller对象。
+
+controller manage里面的depolyment 类型controller会定期调用APIserver的API获取deployment（负责监听 Deployment 记录的更改），发现有新纪录了，那就开始创建replicatse纪录。
+
+为什么不是创建pod纪录而是创建replicatset纪录呢。
+
+在 K8s 中，Deployment 实际上只是一系列 `Replicaset` 的集合，而 Replicaset 是一系列 `Pod` 的集合。所以刚刚Deployment Controller 创建了第一个 ReplicaSet后，接着就是ReplicaSet Controller。
+
+
+
+这个流程下来，etcd中就会保存一个deployment、一个replicaSet和pod资源纪录，这些pod资源现在还处于pending状态，因为它们还没被调度到合适的node中运行。
+
+
+
+这时候就需要scheduler这个调度组件了。
+
+Scheduler平时会使用APIserver的API，定期从etcd获取／监测系统中可用的工作节点列表和待调度的pod，并使用调度策略为pod选择一个运行的工作节点，这个过程叫做**绑定**。绑定成功后，scheduler会调用APIserver的API在etcd中创建一个binding对象，描述在一个工作节点上绑定运行的pod信息。
+
+然后，节点上kubelet会监听APIserver上pod的更新，如果发现有pod更新，则会自动创建并启动。
+
+
+
+Kube-proxy
+
+
+
